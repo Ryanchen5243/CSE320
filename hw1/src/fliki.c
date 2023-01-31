@@ -4,7 +4,6 @@
 #include "fliki.h"
 #include "global.h"
 #include "debug.h"
-
 /**
  * @brief Get the header of the next hunk in a diff file.
  * @details This function advances to the beginning of the next hunk
