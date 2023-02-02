@@ -4,6 +4,8 @@
 #include "global.h"
 #include "debug.h"
 
+int isFlag(char* str,int len);
+
 /**
  * @brief Validates command line arguments passed to the program.
  * @details This function will validate all the arguments passed to the
@@ -23,47 +25,64 @@
  */
 
 int validargs(int argc, char **argv) {
-    printf("argc: %d\n",argc);
     // TO BE IMPLEMENTED.
-    if (argc==1){ // no flags -> bin/fliki
-        printf("there are no flags\n");
-        printf("---------------------------------");
-        return 0;
+    
+    if (argc==1){ // no flags provided -> bin/fliki
+        // printf("no flags provided\n");
+        return -1;
     }
-    // check for flag
-    char flagCk = *(*(argv+1)+0);
-    if (flagCk=='-'){
-        if(*(*(argv+1)+1) == '\0' || *(*(argv+1)+2)!='\0'){ // invalid flag
-            printf(">>>>>>>>>>>>>>>>>invalid flag>>>>>>>>>>>>>>>>>\n");
+    int nActive = -1; // if n is triggered
+    int qActive = -1; // if q is triggered
+    for(int i = 1; i < argc; i++){
+        int j = 0;
+        // determine length of argument
+        while (*(*(argv+i)+j) != '\0'){
+            j+=1;
+        }
+        // check if flag
+        int flag = isFlag(*(argv+i),j);
+
+        // if h flag is not first
+        if (flag=='h'&& i!=1){
+            return -1;
+        // if h flag
+        } else if(flag=='h' && i==1){
+            global_options = global_options | HELP_OPTION;
+            return 0;
+        // if last argument is not filename
+        } else if (flag!=-1 && i==argc-1){
+            return -1;
+        // if file name is not last arg
+        } else if (flag==-1 && i!=argc-1) {
             return -1;
         }
-        if (*(*(argv+1)+1)=='h'){
-            printf(">>>>>>>>>>>>>>>>>-h case\n");
-            printf("global options before: %lx\n",global_options);
-            global_options = global_options | 0x1;
-            printf("global options after: %lx\n",global_options);
-            return 0;
-        } else if (*(*(argv+1)+1)=='n'){
-            printf(">>>>>>>>>>>>>>>>> n case\n");
-
-        } else if (*(*(argv+1)+1)=='q'){
-            printf(">>>>>>>>>>>>>>>>> q case\n");
-        } else{
-            printf(">>>>>>>>>>>>>>>>> invalid flag\n");
+        
+        if (flag == 'n'){ // no output option
+            nActive = 1;
+        } else if (flag == 'q'){ // quiet mode
+            qActive = 1;
+        } else { // assign filename
+            diff_filename = *(argv+i);
         }
-    } else { // not flag -> file name
-        printf("you have included a filename\n");
-    }
 
-    for (int i=0;i<argc;i++){
-        int j=0;
-        while(*(*(argv+i)+j)!='\0'){
-            printf("%c",*(*(argv+i)+j));
-            j++;
-        }
-        printf("\n");
     }
-    return 0;
+    // update global options
+    if (nActive == 1){
+        global_options = global_options | NO_PATCH_OPTION;
+    }
+    if (qActive == 1){
+        global_options = global_options | QUIET_OPTION;
+    }
     
+    return 0; // successful validation
     abort();
+}
+
+int isFlag(char* str,int len){
+    if (len != 2 || *str != '-'){ // not flag
+        // printf("not flag\n");
+        return -1;
+    }
+    // printf("flag\n");
+    return *(str+1);
 }

@@ -25,8 +25,6 @@ int main(int argc, char **argv)
         USAGE(*argv, EXIT_SUCCESS);
     // TO BE IMPLEMENTED
     
-
-    // if grep -q "\[\|\]" "src/validargs.c" ; then   echo "The file contains brackets"; else   echo "The file does not contain brackets"; fi
     
 
     return EXIT_FAILURE; 
