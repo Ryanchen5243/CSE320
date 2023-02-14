@@ -24,10 +24,18 @@ int main(int argc, char **argv)
     if(global_options == HELP_OPTION)
         USAGE(*argv, EXIT_SUCCESS);
     // TO BE IMPLEMENTED
-    
-    
+    // open diff file
+    FILE* diffPtr = fopen(diff_filename,"r");
+    // error opening file?
 
-    return EXIT_FAILURE; 
+
+
+    patch(stdin,stdout,diffPtr);
+    fclose(diffPtr); // close diff file
+
+
+
+    return EXIT_FAILURE;
 }
 
 /*

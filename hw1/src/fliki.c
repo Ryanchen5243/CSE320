@@ -4,6 +4,25 @@
 #include "fliki.h"
 #include "global.h"
 #include "debug.h"
+
+static int serialNum; // serial number for given hunk
+static int diff_t; // trailing diff file ptr
+static int diff_c; // current diff file ptr
+static int diff_data_ptr; // data ptr
+static int diff_data_trailing_ptr; // trailing data ptr
+
+// current hunk insertion and deletion arrow counter
+// to be reset after every next hunk
+static int currHunkInsertArrowCount;
+static int currHunkDeleteArrowCount;
+
+typedef enum {
+    NONE_OPERATION,ADDITION_MODE,DELETION_MODE
+} OPERATION;
+
+static int isDigit(char c);
+
+
 /**
  * @brief Get the header of the next hunk in a diff file.
  * @details This function advances to the beginning of the next hunk
@@ -21,6 +40,150 @@
 
 int hunk_next(HUNK *hp, FILE *in) {
     // TO BE IMPLEMENTED
+    // go to start of next hunk -> parse header
+    // initialize hunk structure
+
+    while((diff_c = (fgetc(in))) != EOF) {
+        // hunk begins with digit as first char or
+        int h_cond = (diff_t == -1 && isDigit(diff_c))
+            || (diff_t =='\n' && isDigit(diff_c));
+        if (h_cond) { // found hunk
+            // printf("%s %c\n","successly found",diff_c);
+            // validate format
+            // printf("found %c\n",diff_c);
+
+            ungetc(diff_c,in);
+            // diff_c holds first digit
+            // properties for hunk
+
+            int old1=-1;
+            int old2=-1;
+            HUNK_TYPE h_type = -1;
+            int new1=-1;
+            int new2=-1;
+
+            // parse header line for correct format
+
+            // first section X or X,X
+            diff_c = fgetc(in);
+            if(!isDigit(diff_c)){ // first char
+                return ERR;
+            } else {
+                old1 = diff_c - '0';
+                diff_c = fgetc(in);
+                while(isDigit(diff_c)){
+                    old1 = old1 * 10;
+                    old1 += (diff_c-'0');
+                    diff_c = fgetc(in);
+                }
+                // if comma
+                if (diff_c == ','){
+                    diff_c = fgetc(in);
+                    if(!isDigit(diff_c)){
+                        return ERR;
+                    } else{
+                        old2 = diff_c - '0';
+                        diff_c = fgetc(in);
+                        while(isDigit(diff_c)){
+                            old2 = old2 * 10;
+                            old2 += (diff_c - '0');
+                            diff_c = fgetc(in);
+                        }
+                        goto validate_header_cmd_type;
+                    }
+                } else {
+                    old2 = old1;
+
+                    validate_header_cmd_type: // goto branch
+                    if(diff_c == 'a'){
+                        h_type = HUNK_APPEND_TYPE;
+                    } else if (diff_c == 'd'){
+                        h_type = HUNK_DELETE_TYPE;
+                    } else if(diff_c == 'c'){
+                        h_type = HUNK_CHANGE_TYPE;
+                    } else {
+                        return ERR;
+                    }
+
+                    // validate new range
+                    diff_c = fgetc(in);
+                    if(!isDigit(diff_c)){
+                        return ERR;
+                    } else{
+                        new1 = diff_c - '0';
+                        diff_c = fgetc(in);
+                        while(isDigit(diff_c)){
+                            new1 = new1 * 10;
+                            new1 += (diff_c - '0');
+                            diff_c = fgetc(in);
+                        }
+                        if(diff_c == ','){
+                            diff_c = fgetc(in);
+                            if(!isDigit(diff_c)){
+                                return ERR;
+                            } else {
+                                new2 = diff_c - '0';
+                                diff_c = fgetc(in);
+                                while(isDigit(diff_c)){
+                                    new2 = new2 * 10;
+                                    new2 += (diff_c - '0');
+                                    diff_c = fgetc(in);
+                                }
+                                if(diff_c == '\n'){
+                                    goto valid_hunk_header;
+                                } else{
+                                    return ERR;
+                                }
+                            }
+                        } else if(diff_c == '\n'){
+                            new2 = new1;
+                            goto valid_hunk_header;
+                        } else {
+                            return ERR;
+                        }
+                    }
+                }
+
+            }
+
+            valid_hunk_header:
+            if(old1==-1 || old2==-1 || h_type == -1 || new1==-1 || new2==-1){
+                // printf("an error occureed");
+                return ERR;
+            } else if(old1 > old2 || new1 > new2){
+                // printf("%s\n","Invalid range");
+                return ERR;
+            } else if(h_type == HUNK_APPEND_TYPE && old1 != old2) {
+                return ERR;
+            } else if(h_type == HUNK_DELETE_TYPE && new1 != new2){
+                return ERR;
+            }
+
+            /*
+            printf("%s\n","Hunk Header Successful Validation");
+            printf("old1: %d\n",old1);
+            printf("old2: %d\n",old2);
+            printf("new1: %d\n",new1);
+            printf("new2: %d\n",new2);
+            printf("%d\n---------------------\n",h_type);
+            */
+
+            // initialize hunk
+            (*hp).type = h_type;
+            (*hp).old_start = old1;
+            (*hp).old_end = old2;
+            (*hp).new_start = new1;
+            (*hp).new_end = new2;
+            (*hp).serial = serialNum++;
+
+
+            return 0; // success
+        }
+        // printf("%c",diff_c);
+        diff_t = diff_c; // update trailing
+    }
+
+    return EOF; // end of file
     abort();
 }
 
@@ -60,6 +223,71 @@ int hunk_next(HUNK *hp, FILE *in) {
 
 int hunk_getc(HUNK *hp, FILE *in) {
     // TO BE IMPLEMENTED
+    diff_data_trailing_ptr = diff_data_ptr; // update trailing ptr
+    diff_data_ptr = fgetc(in); // read next char
+
+
+    if (diff_data_ptr == EOF){
+        return EOF;
+    }
+    // end of section
+    if (isDigit(diff_data_ptr) && diff_data_trailing_ptr == '\n'){
+        ungetc(diff_data_ptr,in); // return to stream first digit
+        return EOS;
+    } else if ((diff_data_ptr == '>' && diff_data_trailing_ptr == -1) ||
+        (diff_data_ptr == '>' && diff_data_trailing_ptr == '\n')) {
+            diff_data_trailing_ptr = diff_data_ptr;
+            diff_data_ptr = fgetc(in); // read next char
+            if (diff_data_ptr == ' '){
+                // insertion case "> "
+                currHunkInsertArrowCount++; // update arrow count
+                diff_data_trailing_ptr = diff_data_ptr;
+                diff_data_ptr = fgetc(in);
+            } else {
+                return ERR;
+            }
+    } else if ((diff_data_ptr == '<' && diff_data_trailing_ptr == -1) ||
+        (diff_data_ptr == '<' && diff_data_trailing_ptr == '\n')){
+        diff_data_trailing_ptr = diff_data_ptr;
+        diff_data_ptr = fgetc(in);
+        if (diff_data_ptr == ' '){
+            // deletion case
+            currHunkDeleteArrowCount++;
+            diff_data_trailing_ptr = diff_data_ptr;
+            diff_data_ptr = fgetc(in);
+        } else {
+            return ERR;
+        }
+
+    } else if (diff_data_ptr == '-' && diff_data_trailing_ptr == '\n'){ // validate "---\n"
+        diff_data_trailing_ptr = diff_data_ptr;
+        diff_data_ptr = fgetc(in);
+        if(diff_data_ptr != '-'){
+            return ERR;
+        }
+        diff_data_trailing_ptr = diff_data_ptr;
+        diff_data_ptr = fgetc(in);
+        if(diff_data_ptr != '-'){
+            return ERR;
+        }
+        diff_data_trailing_ptr = diff_data_ptr;
+        diff_data_ptr = fgetc(in);
+        if (diff_data_ptr != '\n'){
+            return ERR;
+        }
+        diff_data_trailing_ptr = diff_data_ptr;
+        diff_data_ptr = fgetc(in);
+        // edge case ?????
+        if (diff_data_ptr == '>'){
+            ungetc(diff_data_ptr,in);
+            return EOS;
+        } else {
+            return ERR;
+        }
+
+    }
+
+    return diff_data_ptr; // succcess
     abort();
 }
 
@@ -147,5 +375,161 @@ void hunk_show(HUNK *hp, FILE *out) {
 
 int patch(FILE *in, FILE *out, FILE *diff) {
     // TO BE IMPLEMENTED
+    HUNK myHunk; // Current hunk
+    diff_c = -1; // for purpose of parsing diff file for hunk next
+    diff_t = -1;
+    serialNum = 0; // initialize serial num
+    // for purpose of parsing data section of given hunk
+    diff_data_ptr = -1;
+    diff_data_trailing_ptr = -1;
+
+    // bin/fliki rsrc/file1_file2.diff < rsrc/file1 > test_output/basic_test.out
+
+
+
+
+
+    int src_file_line_ctr = 0; // num lines parsed measured by \n
+    int output_line_ctr = 0; // num lines written to output by \n
+
+
+    // while there are hunks
+    int res_hunk_next = hunk_next(&myHunk,diff);
+    while(res_hunk_next != EOF){
+        if (res_hunk_next == ERR){
+            // print error to stderr
+            fprintf(stderr,"Invalid Hunk Header\n");
+            return -1;
+        }
+
+        // Displays hunk info
+        /*
+        printf("%d,%d,%d,%d\n",myHunk.old_start,myHunk.old_end,myHunk.new_start,myHunk.new_end);
+        printf("Serial num: %d\n",serialNum);
+        if(myHunk.type == HUNK_APPEND_TYPE){
+            printf("%s\n","Append");
+        } else if(myHunk.type == HUNK_DELETE_TYPE){
+            printf("%s\n","Delete");
+        } else {
+            printf("%s\n","Change");
+        }*/
+
+        // fetch hunk details
+        int hunkOldStart = myHunk.old_start;
+        int hunkOldEnd = myHunk.old_end;
+        int hunkNewStart = myHunk.new_start;
+        int hunkNewEnd = myHunk.new_end;
+        int currHunkType = myHunk.type;
+        printf("%d,%d",hunkOldStart,hunkOldEnd);
+        if(currHunkType == HUNK_APPEND_TYPE){
+            printf("%s","a");
+        } else if (currHunkType == HUNK_DELETE_TYPE){
+            printf("%s","d");
+        } else {
+            printf("%s","c");
+        }
+        printf("%d,%d\n",hunkNewStart,hunkNewEnd);
+
+        // in -> source file pointer
+
+
+        // while source file line # isn't in consideration
+        // copy contents from src to output file
+
+        int sourceChar = -1;
+        while(src_file_line_ctr < hunkOldStart - 1){
+            sourceChar = fgetc(in);
+            if (sourceChar == EOF) {
+                printf("%s\n","end of soruce file");
+                break;
+            }
+            printf("%c",sourceChar);
+            if(sourceChar == '\n'){
+                src_file_line_ctr++;
+            }
+        }
+
+        OPERATION myoperation = NONE_OPERATION;
+
+        if(currHunkType == HUNK_APPEND_TYPE){// case addition
+            myoperation = ADDITION_MODE;
+        } else if (currHunkType == HUNK_DELETE_TYPE){// case deletion
+            myoperation = DELETION_MODE;
+        } else {// case change
+            myoperation = DELETION_MODE; // initially deletion mode
+        }
+
+
+
+
+
+
+
+
+        // initialize hunk arrow counts for given hunk
+        currHunkInsertArrowCount = 0;
+        currHunkDeleteArrowCount = 0;
+
+        // read data section of given hunk
+        // fgetc(diff) returns first char of curr Hunk data section
+
+        while((diff_data_ptr = hunk_getc(&myHunk,diff)) != EOF){
+
+            if(diff_data_ptr == EOS){// end of section
+                printf("%s\n","******************end of section >>>>>>>>>>>>>>>>>>>>>>>");
+                // proceed with additions section for change type
+                int temp = -1;
+                if(currHunkType==HUNK_CHANGE_TYPE && ((temp = fgetc(diff)) == '>')){
+                    ungetc('>',diff);
+                    diff_data_ptr = '\n';
+                    myoperation = ADDITION_MODE; // update mode
+                    continue;
+                }
+                if (temp != -1){
+                    ungetc(temp,diff);
+                }
+
+                break;
+            } else if (diff_data_ptr == ERR){
+                printf("%s\n","Error");
+            } else {
+                // printf("%c",diff_data_ptr);
+                // Hunk Change Type -- validate lines (deletion portin)
+                if (currHunkType == HUNK_CHANGE_TYPE && myoperation == DELETION_MODE){
+                    if(diff_data_ptr != fgetc(in)){
+                        printf("error\n");
+                    }
+                } else if (currHunkType == HUNK_CHANGE_TYPE && myoperation == ADDITION_MODE){
+                    // write to file
+                    printf("%c",diff_data_ptr);
+                }
+            }
+        }
+
+        // get next hunk
+
+        // display addition/deletion counts
+        // printf("Addition Total Lines: %d\n",currHunkInsertArrowCount);
+        // printf("Deletion Total Lines: %d\n",currHunkDeleteArrowCount);
+        currHunkDeleteArrowCount = 0; // reset arrow counts
+        currHunkInsertArrowCount = 0;
+
+
+
+
+        diff_t = '\n';
+        diff_data_ptr = -1;
+        diff_data_trailing_ptr = -1;
+        res_hunk_next = hunk_next(&myHunk,diff);
+    }
+
+    fprintf(stdout,"%s\n","-------------------------------\nreached end of diff file");
+
+    return 0; // success
+
     abort();
+}
+
+static int isDigit(char c){
+    return c >= '0' && c <= '9';
 }
