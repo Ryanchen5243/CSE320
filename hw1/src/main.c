@@ -33,9 +33,10 @@ int main(int argc, char **argv)
     patch(stdin,stdout,diffPtr);
     fclose(diffPtr); // close diff file
 
+    // return success or failure
 
 
-    return EXIT_FAILURE;
+    return EXIT_SUCCESS;
 }
 
 /*

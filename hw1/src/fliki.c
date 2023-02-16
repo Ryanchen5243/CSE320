@@ -39,19 +39,11 @@ static int isDigit(char c);
  */
 
 int hunk_next(HUNK *hp, FILE *in) {
-    // TO BE IMPLEMENTED
-    // go to start of next hunk -> parse header
-    // initialize hunk structure
-
     while((diff_c = (fgetc(in))) != EOF) {
         // hunk begins with digit as first char or
         int h_cond = (diff_t == -1 && isDigit(diff_c))
             || (diff_t =='\n' && isDigit(diff_c));
         if (h_cond) { // found hunk
-            // printf("%s %c\n","successly found",diff_c);
-            // validate format
-            // printf("found %c\n",diff_c);
-
             ungetc(diff_c,in);
             // diff_c holds first digit
             // properties for hunk
@@ -148,25 +140,14 @@ int hunk_next(HUNK *hp, FILE *in) {
 
             valid_hunk_header:
             if(old1==-1 || old2==-1 || h_type == -1 || new1==-1 || new2==-1){
-                // printf("an error occureed");
                 return ERR;
             } else if(old1 > old2 || new1 > new2){
-                // printf("%s\n","Invalid range");
                 return ERR;
             } else if(h_type == HUNK_APPEND_TYPE && old1 != old2) {
                 return ERR;
             } else if(h_type == HUNK_DELETE_TYPE && new1 != new2){
                 return ERR;
             }
-
-            /*
-            printf("%s\n","Hunk Header Successful Validation");
-            printf("old1: %d\n",old1);
-            printf("old2: %d\n",old2);
-            printf("new1: %d\n",new1);
-            printf("new2: %d\n",new2);
-            printf("%d\n---------------------\n",h_type);
-            */
 
             // initialize hunk
             (*hp).type = h_type;
@@ -176,15 +157,12 @@ int hunk_next(HUNK *hp, FILE *in) {
             (*hp).new_end = new2;
             (*hp).serial = serialNum++;
 
-
             return 0; // success
         }
-        // printf("%c",diff_c);
         diff_t = diff_c; // update trailing
     }
 
     return EOF; // end of file
-    abort();
 }
 
 /**
@@ -277,18 +255,18 @@ int hunk_getc(HUNK *hp, FILE *in) {
         }
         diff_data_trailing_ptr = diff_data_ptr;
         diff_data_ptr = fgetc(in);
-        // edge case ?????
+
+
         if (diff_data_ptr == '>'){
             ungetc(diff_data_ptr,in);
             return EOS;
         } else {
-            return ERR;
+            return ERR; // hunk change type missing addition section
         }
 
     }
 
     return diff_data_ptr; // succcess
-    abort();
 }
 
 /**
@@ -322,7 +300,13 @@ int hunk_getc(HUNK *hp, FILE *in) {
 
 void hunk_show(HUNK *hp, FILE *out) {
     // TO BE IMPLEMENTED
-    abort();
+
+
+
+
+
+
+    return;
 }
 
 /**
@@ -386,18 +370,15 @@ int patch(FILE *in, FILE *out, FILE *diff) {
     // bin/fliki rsrc/file1_file2.diff < rsrc/file1 > test_output/basic_test.out
 
 
-
-
-
     int src_file_line_ctr = 0; // num lines parsed measured by \n
     int output_line_ctr = 0; // num lines written to output by \n
 
+    // initialize buffer
 
     // while there are hunks
     int res_hunk_next = hunk_next(&myHunk,diff);
     while(res_hunk_next != EOF){
         if (res_hunk_next == ERR){
-            // print error to stderr
             fprintf(stderr,"Invalid Hunk Header\n");
             return -1;
         }
@@ -420,6 +401,7 @@ int patch(FILE *in, FILE *out, FILE *diff) {
         int hunkNewStart = myHunk.new_start;
         int hunkNewEnd = myHunk.new_end;
         int currHunkType = myHunk.type;
+        /*
         printf("%d,%d",hunkOldStart,hunkOldEnd);
         if(currHunkType == HUNK_APPEND_TYPE){
             printf("%s","a");
@@ -429,42 +411,59 @@ int patch(FILE *in, FILE *out, FILE *diff) {
             printf("%s","c");
         }
         printf("%d,%d\n",hunkNewStart,hunkNewEnd);
+        */
 
         // in -> source file pointer
-
-
         // while source file line # isn't in consideration
         // copy contents from src to output file
 
-        int sourceChar = -1;
-        while(src_file_line_ctr < hunkOldStart - 1){
-            sourceChar = fgetc(in);
-            if (sourceChar == EOF) {
-                printf("%s\n","end of soruce file");
-                break;
-            }
-            printf("%c",sourceChar);
-            if(sourceChar == '\n'){
-                src_file_line_ctr++;
-            }
-        }
+        int numNewLinesTillStart = -1; // initialize num new lines tracker
 
         OPERATION myoperation = NONE_OPERATION;
-
         if(currHunkType == HUNK_APPEND_TYPE){// case addition
             myoperation = ADDITION_MODE;
+            numNewLinesTillStart = hunkOldStart - src_file_line_ctr;
         } else if (currHunkType == HUNK_DELETE_TYPE){// case deletion
             myoperation = DELETION_MODE;
+            numNewLinesTillStart = hunkOldStart - src_file_line_ctr - 1;
         } else {// case change
             myoperation = DELETION_MODE; // initially deletion mode
+            numNewLinesTillStart = hunkOldStart - src_file_line_ctr - 1;
         }
 
+        int sourceChar = -1;
+        int new_line_count = 0; // for copy purpose
 
 
+        // write contents from src to ouput until start of hunk affected line
+        while(new_line_count < numNewLinesTillStart){
+            sourceChar = fgetc(in); // read char
+            if (sourceChar == EOF) {
+                fprintf(stderr,"Invalid Start Lines Provided\n");
+                return -1;
+            }
+            fprintf(out,"%c",sourceChar); // write char to output file
+            if(sourceChar == '\n'){
+                src_file_line_ctr++; // increment source line count
+                output_line_ctr++; // increment output line count
+                new_line_count++;
+            }
+        }
 
+        // in -> next source file char to handle by given hunk
 
-
-
+        // addition -> oldstart line has already been written
+        // need only to insert data section of hunk
+        // validate new lines
+        if(myoperation == ADDITION_MODE && hunkNewStart != (output_line_ctr + 1)){
+            fprintf(stderr,"Invalid Addition Lines provided\n");
+            return -1;
+        } else if (currHunkType == HUNK_CHANGE_TYPE){
+            if (hunkNewStart != (output_line_ctr + 1)){
+                fprintf(stderr,"Invalid change new start line\n");
+                return -1;
+            }
+        }
 
         // initialize hunk arrow counts for given hunk
         currHunkInsertArrowCount = 0;
@@ -476,10 +475,15 @@ int patch(FILE *in, FILE *out, FILE *diff) {
         while((diff_data_ptr = hunk_getc(&myHunk,diff)) != EOF){
 
             if(diff_data_ptr == EOS){// end of section
-                printf("%s\n","******************end of section >>>>>>>>>>>>>>>>>>>>>>>");
+                // printf("%s\n","******************end of section >>>>>>>>>>>>>>>>>>>>>>>");
                 // proceed with additions section for change type
                 int temp = -1;
                 if(currHunkType==HUNK_CHANGE_TYPE && ((temp = fgetc(diff)) == '>')){
+                    // validate deletion lines count
+                    if ((hunkOldEnd - hunkOldStart + 1) != currHunkDeleteArrowCount){
+                        fprintf(stderr,"%s\n","Invalid number deletion lines provided");
+                        return -1;
+                    }
                     ungetc('>',diff);
                     diff_data_ptr = '\n';
                     myoperation = ADDITION_MODE; // update mode
@@ -491,22 +495,62 @@ int patch(FILE *in, FILE *out, FILE *diff) {
 
                 break;
             } else if (diff_data_ptr == ERR){
-                printf("%s\n","Error");
+                // error
             } else {
-                // printf("%c",diff_data_ptr);
                 // Hunk Change Type -- validate lines (deletion portin)
                 if (currHunkType == HUNK_CHANGE_TYPE && myoperation == DELETION_MODE){
-                    if(diff_data_ptr != fgetc(in)){
-                        printf("error\n");
+                    int track_new_line;
+                    track_new_line = fgetc(in);
+                    if(diff_data_ptr != track_new_line){ // compare w source file
+                        // error
+                        fprintf(stderr,"%s\n","Non Matching Diff File Deletion Lines and Source Files Lines");
+                        return -1;
+                    } else if(track_new_line == '\n'){
+                        src_file_line_ctr++;// increment source file count
                     }
                 } else if (currHunkType == HUNK_CHANGE_TYPE && myoperation == ADDITION_MODE){
-                    // write to file
-                    printf("%c",diff_data_ptr);
+                    // write data from hunk to output
+                    fprintf(out,"%c",diff_data_ptr);
+                    if(diff_data_ptr == '\n'){
+                        output_line_ctr++; // increment output line ctr
+                    }
+                } else if(currHunkType == HUNK_APPEND_TYPE && myoperation == ADDITION_MODE){
+                    // write contents from diff file to output file
+                    fprintf(out,"%c",diff_data_ptr);
+                    if(diff_data_ptr == '\n'){
+                        output_line_ctr++;
+                    }
+                } else if(currHunkType == HUNK_DELETE_TYPE && myoperation == DELETION_MODE){
+                    // validate deletion chars bw diff and source
+                    int track_new_del_line = fgetc(in);
+                    if(diff_data_ptr != track_new_del_line){
+                        fprintf(stderr,"%s\n","Non matching del lines between source and diff");
+                        return -1;
+                    } else if (track_new_del_line == '\n'){
+                        src_file_line_ctr++; // increment source file line count
+                    }
                 }
             }
         }
 
+        // num arrows validation
+        if(currHunkType == HUNK_CHANGE_TYPE){
+            // validate insertion count
+            if(currHunkInsertArrowCount != (hunkNewEnd - hunkNewStart + 1)) {
+                fprintf(stderr,"%s\n","Invalid num insertion arrow\n");
+                return -1;
+            } else if ((hunkOldEnd - hunkOldStart + 1) != currHunkDeleteArrowCount){ // validate deltion count
+                fprintf(stderr,"%s\n","invalid num deltion arrow");
+                return -1;
+            }
+        } else if (currHunkType == HUNK_APPEND_TYPE){
+            // printf("%d-----%d-----------------\n",currHunkInsertArrowCount,currHunkDeleteArrowCount);
+        } else { // Deletion type
+
+        }
+
         // get next hunk
+        // printf("getting next hunk\n");
 
         // display addition/deletion counts
         // printf("Addition Total Lines: %d\n",currHunkInsertArrowCount);
@@ -515,19 +559,23 @@ int patch(FILE *in, FILE *out, FILE *diff) {
         currHunkInsertArrowCount = 0;
 
 
-
-
         diff_t = '\n';
         diff_data_ptr = -1;
         diff_data_trailing_ptr = -1;
         res_hunk_next = hunk_next(&myHunk,diff);
     }
-
-    fprintf(stdout,"%s\n","-------------------------------\nreached end of diff file");
+    // what if there are more chars from source????
+    // write remaining source file contents to output
+    int rem_chars = fgetc(in);
+    while(rem_chars != EOF){
+        fprintf(out,"%c",rem_chars);
+        if(rem_chars == '\n'){
+            src_file_line_ctr++;
+        }
+        rem_chars = fgetc(in);
+    }
 
     return 0; // success
-
-    abort();
 }
 
 static int isDigit(char c){
