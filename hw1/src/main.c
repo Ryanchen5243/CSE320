@@ -27,6 +27,9 @@ int main(int argc, char **argv)
     // open diff file
     FILE* diffPtr = fopen(diff_filename,"r");
     // error opening file?
+    if(diffPtr==NULL){
+        return EXIT_FAILURE;
+    }
 
 
 

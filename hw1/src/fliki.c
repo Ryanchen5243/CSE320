@@ -333,7 +333,7 @@ void hunk_show(HUNK *hp, FILE *out) {
     // display deletions
     char*p;
 
-    p = hunk_deletions_buffer;
+    p = hunk_deletions_buffer + 2;
     int arrowFlag = 1;
 
     if(hp->type == HUNK_APPEND_TYPE){
@@ -346,10 +346,12 @@ void hunk_show(HUNK *hp, FILE *out) {
             fprintf(stderr,"%c%c",'<',' ');
             arrowFlag = 0;
         }
+        fprintf(stderr,"%c",*p);
         if(*p == '\n'){
             arrowFlag=1;
+            p+=2;
+            continue;
         }
-        fprintf(stderr,"%c",*p);
         p++;
     } while(!(*p==0 && *(p+1)==0));
 
@@ -370,10 +372,12 @@ void hunk_show(HUNK *hp, FILE *out) {
             fprintf(stderr,"%c%c",'>',' ');
             arrowFlag = 0;
         }
+        fprintf(stderr,"%c",*p);
         if(*p == '\n'){
             arrowFlag=1;
+            p+=2;
+            continue;
         }
-        fprintf(stderr,"%c",*p);
         p++;
     } while(!(*p==0 && *(p+1)==0));
 
@@ -646,6 +650,7 @@ int patch(FILE *in, FILE *out, FILE *diff) {
                     fprintf(out,"%c",diff_data_ptr);
                     *addLineContentPtr = diff_data_ptr;
                     addLineContentPtr++;
+                    (*addBuffPtr)++;// increment count
                     if(diff_data_ptr == '\n'){
                         output_line_ctr++;
                         addBuffPtr = addLineContentPtr;
@@ -656,6 +661,7 @@ int patch(FILE *in, FILE *out, FILE *diff) {
                     int track_new_del_line = fgetc(in);
                     *delLineContentPtr = diff_data_ptr;
                     delLineContentPtr++;
+                    (*delBuffPtr)++;
                     if(diff_data_ptr != track_new_del_line){
                         if(!quietModeEnabled){
                             fprintf(stderr,"%s\n","Non matching del lines between source and diff");
