@@ -30,12 +30,15 @@ int main(int argc, char **argv)
 
 
 
-    patch(stdin,stdout,diffPtr);
+    int patchRes = patch(stdin,stdout,diffPtr);
     fclose(diffPtr); // close diff file
 
     // return success or failure
-
-
+    if(patchRes == -1){
+        // printf("returning failure");
+        return EXIT_FAILURE;
+    }
+    // printf("Returning exit succes");
     return EXIT_SUCCESS;
 }
 

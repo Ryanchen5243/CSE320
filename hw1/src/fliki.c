@@ -301,8 +301,81 @@ int hunk_getc(HUNK *hp, FILE *in) {
 void hunk_show(HUNK *hp, FILE *out) {
     // TO BE IMPLEMENTED
 
+    // line in tradtional format of hunk
+    int oldStart = hp->old_start;
+    int oldEnd = hp->old_end;
+    int newStart = hp->new_start;
+    int newEnd = hp->new_end;
+    HUNK_TYPE type = hp->type;
+
+    if(oldStart != oldEnd) {
+        fprintf(out,"%d,%d",oldStart,oldEnd);
+    } else {
+        fprintf(out,"%d",oldStart);
+    }
+    if(type == HUNK_APPEND_TYPE){
+        fprintf(out,"%c",'a');
+    } else if(type == HUNK_DELETE_TYPE){
+        fprintf(out,"%c",'d');
+    } else{
+        fprintf(out,"%c",'c');
+    }
+
+    if(newStart != newEnd){
+        fprintf(out,"%d,%d",newStart,newEnd);
+    } else {
+        fprintf(out,"%d",newStart);
+    }
+    fprintf(out,"\n");
+
+    // Display Buffer
+
+    // display deletions
+    char*p;
+
+    p = hunk_deletions_buffer;
+    int arrowFlag = 1;
+
+    if(hp->type == HUNK_APPEND_TYPE){
+        goto display_addition_buffer;
+    }
+
+    // display deletion buffer
+    do {
+        if(arrowFlag){
+            fprintf(stderr,"%c%c",'<',' ');
+            arrowFlag = 0;
+        }
+        if(*p == '\n'){
+            arrowFlag=1;
+        }
+        fprintf(stderr,"%c",*p);
+        p++;
+    } while(!(*p==0 && *(p+1)==0));
 
 
+    if(hp->type == HUNK_DELETE_TYPE){
+        return;
+    }
+    fprintf(stderr,"%s","---\n"); // line break for change
+
+
+    display_addition_buffer:
+
+    p = hunk_additions_buffer;
+    arrowFlag = 1;
+
+    do {
+        if(arrowFlag){
+            fprintf(stderr,"%c%c",'>',' ');
+            arrowFlag = 0;
+        }
+        if(*p == '\n'){
+            arrowFlag=1;
+        }
+        fprintf(stderr,"%c",*p);
+        p++;
+    } while(!(*p==0 && *(p+1)==0));
 
 
 
@@ -373,15 +446,40 @@ int patch(FILE *in, FILE *out, FILE *diff) {
     int src_file_line_ctr = 0; // num lines parsed measured by \n
     int output_line_ctr = 0; // num lines written to output by \n
 
-    // initialize buffer
+    // initialize buffer pointers
+    char* delBuffPtr = hunk_deletions_buffer;// deletions buffer ptr
+    char* addBuffPtr = hunk_additions_buffer; // addition buffer ptr
+
+    unsigned long globalOptionCopy = global_options >> 2; // right shift by 2
+    int quietModeEnabled = 0;
+    if(globalOptionCopy % 10 == 0){
+        // not quite mode
+    } else {
+        quietModeEnabled = 1;
+    }
 
     // while there are hunks
     int res_hunk_next = hunk_next(&myHunk,diff);
     while(res_hunk_next != EOF){
         if (res_hunk_next == ERR){
-            fprintf(stderr,"Invalid Hunk Header\n");
+            if(!quietModeEnabled){
+                fprintf(stderr,"Invalid Hunk Header\n");
+            }
             return -1;
         }
+
+        // clear buffers
+        for(int i = 0; i < HUNK_MAX;i++){
+            *(hunk_deletions_buffer + i) = (unsigned char) 0x0;
+            *(hunk_additions_buffer + i) = (unsigned char) 0x0;
+        }
+        // reset buffer pointers
+        delBuffPtr = hunk_deletions_buffer;
+        addBuffPtr = hunk_additions_buffer;
+
+
+        char * delLineContentPtr = delBuffPtr + 2; // purpose of storing contents of given line
+        char* addLineContentPtr = addBuffPtr + 2;
 
         // Displays hunk info
         /*
@@ -439,7 +537,9 @@ int patch(FILE *in, FILE *out, FILE *diff) {
         while(new_line_count < numNewLinesTillStart){
             sourceChar = fgetc(in); // read char
             if (sourceChar == EOF) {
-                fprintf(stderr,"Invalid Start Lines Provided\n");
+                if(!quietModeEnabled) {
+                    fprintf(stderr,"Invalid Start Lines Provided\n");
+                }
                 return -1;
             }
             fprintf(out,"%c",sourceChar); // write char to output file
@@ -456,11 +556,15 @@ int patch(FILE *in, FILE *out, FILE *diff) {
         // need only to insert data section of hunk
         // validate new lines
         if(myoperation == ADDITION_MODE && hunkNewStart != (output_line_ctr + 1)){
-            fprintf(stderr,"Invalid Addition Lines provided\n");
+            if(!quietModeEnabled){
+                fprintf(stderr,"Invalid Addition Lines provided\n");
+            }
             return -1;
         } else if (currHunkType == HUNK_CHANGE_TYPE){
             if (hunkNewStart != (output_line_ctr + 1)){
-                fprintf(stderr,"Invalid change new start line\n");
+                if(!quietModeEnabled){
+                    fprintf(stderr,"Invalid change new start line\n");
+                }
                 return -1;
             }
         }
@@ -481,7 +585,10 @@ int patch(FILE *in, FILE *out, FILE *diff) {
                 if(currHunkType==HUNK_CHANGE_TYPE && ((temp = fgetc(diff)) == '>')){
                     // validate deletion lines count
                     if ((hunkOldEnd - hunkOldStart + 1) != currHunkDeleteArrowCount){
-                        fprintf(stderr,"%s\n","Invalid number deletion lines provided");
+                        if(!quietModeEnabled){
+                            fprintf(stderr,"%s\n","Invalid number deletion lines provided");
+                            hunk_show(&myHunk,stderr);
+                        }
                         return -1;
                     }
                     ungetc('>',diff);
@@ -496,38 +603,69 @@ int patch(FILE *in, FILE *out, FILE *diff) {
                 break;
             } else if (diff_data_ptr == ERR){
                 // error
+                if(!quietModeEnabled){
+                    hunk_show(&myHunk,stderr);
+                }
+
             } else {
                 // Hunk Change Type -- validate lines (deletion portin)
                 if (currHunkType == HUNK_CHANGE_TYPE && myoperation == DELETION_MODE){
                     int track_new_line;
                     track_new_line = fgetc(in);
+                    *delLineContentPtr = diff_data_ptr;// add to deletion buffer
+                    delLineContentPtr++; // advance ptr
+                    (*delBuffPtr)+=1; // update count
+
                     if(diff_data_ptr != track_new_line){ // compare w source file
                         // error
-                        fprintf(stderr,"%s\n","Non Matching Diff File Deletion Lines and Source Files Lines");
+                        if(!quietModeEnabled){
+                            fprintf(stderr,"%s\n","Non Matching Deletion Lines");
+                            hunk_show(&myHunk,stderr);
+                        }
                         return -1;
                     } else if(track_new_line == '\n'){
                         src_file_line_ctr++;// increment source file count
+                        // new line detected
+                        delBuffPtr = delLineContentPtr;
+                        delLineContentPtr += 2;
                     }
                 } else if (currHunkType == HUNK_CHANGE_TYPE && myoperation == ADDITION_MODE){
                     // write data from hunk to output
                     fprintf(out,"%c",diff_data_ptr);
+                    *addLineContentPtr = diff_data_ptr;
+                    addLineContentPtr++;
+                    (*addBuffPtr)++; // increment count
+
                     if(diff_data_ptr == '\n'){
                         output_line_ctr++; // increment output line ctr
+                        addBuffPtr = addLineContentPtr;
+                        addLineContentPtr+=2;
                     }
                 } else if(currHunkType == HUNK_APPEND_TYPE && myoperation == ADDITION_MODE){
                     // write contents from diff file to output file
                     fprintf(out,"%c",diff_data_ptr);
+                    *addLineContentPtr = diff_data_ptr;
+                    addLineContentPtr++;
                     if(diff_data_ptr == '\n'){
                         output_line_ctr++;
+                        addBuffPtr = addLineContentPtr;
+                        addLineContentPtr+=2;
                     }
                 } else if(currHunkType == HUNK_DELETE_TYPE && myoperation == DELETION_MODE){
                     // validate deletion chars bw diff and source
                     int track_new_del_line = fgetc(in);
+                    *delLineContentPtr = diff_data_ptr;
+                    delLineContentPtr++;
                     if(diff_data_ptr != track_new_del_line){
-                        fprintf(stderr,"%s\n","Non matching del lines between source and diff");
+                        if(!quietModeEnabled){
+                            fprintf(stderr,"%s\n","Non matching del lines between source and diff");
+                            hunk_show(&myHunk,stderr);
+                        }
                         return -1;
                     } else if (track_new_del_line == '\n'){
                         src_file_line_ctr++; // increment source file line count
+                        delBuffPtr = delLineContentPtr;
+                        delLineContentPtr += 2;
                     }
                 }
             }
@@ -537,10 +675,16 @@ int patch(FILE *in, FILE *out, FILE *diff) {
         if(currHunkType == HUNK_CHANGE_TYPE){
             // validate insertion count
             if(currHunkInsertArrowCount != (hunkNewEnd - hunkNewStart + 1)) {
-                fprintf(stderr,"%s\n","Invalid num insertion arrow\n");
+                if(!quietModeEnabled){
+                    fprintf(stderr,"%s","Invalid num insertion arrow\n");
+                    hunk_show(&myHunk,stderr);
+                }
                 return -1;
             } else if ((hunkOldEnd - hunkOldStart + 1) != currHunkDeleteArrowCount){ // validate deltion count
-                fprintf(stderr,"%s\n","invalid num deltion arrow");
+                if(!quietModeEnabled){
+                    fprintf(stderr,"%s\n","invalid num deletion arrow");
+                    hunk_show(&myHunk,stderr);
+                }
                 return -1;
             }
         } else if (currHunkType == HUNK_APPEND_TYPE){
@@ -557,7 +701,6 @@ int patch(FILE *in, FILE *out, FILE *diff) {
         // printf("Deletion Total Lines: %d\n",currHunkDeleteArrowCount);
         currHunkDeleteArrowCount = 0; // reset arrow counts
         currHunkInsertArrowCount = 0;
-
 
         diff_t = '\n';
         diff_data_ptr = -1;
