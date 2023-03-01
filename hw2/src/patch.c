@@ -313,6 +313,7 @@ char **argv;
         }
         set_signals();
     }
+    Fclose(pfp);
     my_exit(0);
 }
 
@@ -371,6 +372,9 @@ void get_some_switches()
             filearg[filec++] = savestr(s);
         }
         else {
+            if(*(s+2) != 0){
+                continue;
+            }
             switch (*++s) {
             case 'b':
                 origext = savestr(Argv[1]);
@@ -877,8 +881,12 @@ void re_input()
     if (using_plan_a) {
         i_size = 0;
         /*NOSTRICT*/
-        if (i_ptr != Null(char**))
+        if (i_ptr != Null(char**)){
             free((char *)i_ptr);
+        }
+        if(i_womp != Nullch){
+            free(i_womp);
+        }
         i_womp = Nullch;
         i_ptr = Null(char **);
     }
@@ -965,7 +973,7 @@ char *filename;
             iline++;
     }
     /*NOSTRICT*/
-    i_ptr = (char **)malloc((MEM)((iline + 1) * sizeof(char *)));
+    i_ptr = (char **)malloc((MEM)((iline + 2) * sizeof(char *)));
     if (i_ptr == Null(char **)) {       /* shucks, it was a near thing */
         free((char *)i_womp);
         return FALSE;
@@ -1187,8 +1195,8 @@ int intuit_diff_type()
     bool this_line_is_command = FALSE;
     register int indent;
     register char *s, *t;
-    char *oldname;
-    char *newname;
+    char *oldname = Nullch;
+    char *newname = Nullch;
     bool no_filearg = (filearg[0] == Nullch);
 
     Fseek(pfp,p_base,0);
@@ -1227,10 +1235,13 @@ int intuit_diff_type()
             newname = fetchname(s+4);
             if (no_filearg) {
                 if (oldname && newname) {
-                    if (strlen(oldname) < strlen(newname))
+                    if (strlen(oldname) < strlen(newname)){
                         filearg[0] = oldname;
-                    else
+                        free(newname);
+                    } else{
                         filearg[0] = newname;
+                        free(oldname);
+                    }
                 }
                 else if (oldname)
                     filearg[0] = oldname;
@@ -1687,12 +1698,16 @@ char *
 savestr(s)
 register char *s;
 {
+    if(s==NULL){
+        return NULL;
+    }
     register char  *rv=NULL,
                    *t=NULL;
 
     t = s;
-    while (*t++)
-    rv = malloc((MEM) (t - s));
+    while (*t++); // some changes were made here
+
+    rv = malloc((MEM) ((t - s)+1));
     if (rv == NULL)
         fatal ("patch: out of memory (savestr)\n");
     t = rv;
