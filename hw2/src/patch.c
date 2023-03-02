@@ -38,6 +38,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <getopt.h>
 
 /* constants */
 
@@ -353,47 +354,59 @@ void reinitialize_almost_everything()
         fatal("You may not change to a different patch file.\n");
 }
 
+
 void get_some_switches()
 {
-    register char *s;
-
     rejname[0] = '\0';
-    if (!Argc)
+    if (!Argc){
         return;
-    for (Argc--,Argv++; Argc; Argc--,Argv++) {
-        s = Argv[0];
-        if (strEQ(s,"+")) {
-            return;                     /* + will be skipped by for loop */
-        }
-        if (*s != '-' || !s[1]) {
-            if (filec == MAXFILEC){
-                fatal("Too many file arguments.\n");
-            }
-            filearg[filec++] = savestr(s);
-        }
-        else {
-            if(*(s+2) != 0){
-                continue;
-            }
-            switch (*++s) {
+    }
+    int c;
+    int file_arg_index = 0;
+
+    while (1) {
+        // int option_index = 0;
+
+        static struct option long_options[] = {
+            {"backup-extension", required_argument, 0, 'b'},
+            {"context-diff", no_argument, 0, 'c'},
+            {"directory", required_argument, 0, 'd'},
+            {"do-defines", required_argument, 0, 'D'},
+            {"ed-script", no_argument, 0, 'e'},
+            {"loose-matching", no_argument, 0, 'l'},
+            {"normal-diff", no_argument, 0, 'n'},
+            {"output-file", required_argument, 0, 'o'},
+            {"pathnames", no_argument, 0, 'p'},
+            {"reject-file", required_argument, 0, 'r'},
+            {"reverse", no_argument, 0, 'R'},
+            {"silent", no_argument, 0, 's'},
+            {"debug", required_argument, 0, 'x'},
+            {0, 0, 0, 0}
+        };
+
+        c = getopt_long(Argc, Argv, "+b:cd:D:elno:pr:Rsx:",
+                 long_options, NULL);
+        if (c == -1)
+            break;
+
+        switch (c) {
             case 'b':
-                origext = savestr(Argv[1]);
-                Argc--,Argv++;
+                origext = savestr(optarg);
                 break;
             case 'c':
                 diff_type = CONTEXT_DIFF;
                 break;
             case 'd':
-                if (chdir(Argv[1]) < 0)
-                    fatal("Can't cd to %s.\n",Argv[1]);
-                Argc--,Argv++;
+                if (chdir(optarg) < 0) {
+                    fatal("Can't cd to %s.\n", optarg);
+                }
                 break;
             case 'D':
                 do_defines++;
-                Sprintf(if_defined, "#ifdef %s\n", Argv[1]);
-                Sprintf(not_defined, "#ifndef %s\n", Argv[1]);
-                Sprintf(end_defined, "#endif %s\n", Argv[1]);
-                Argc--,Argv++;
+                Sprintf(if_defined, "#ifdef %s\n", optarg);
+                Sprintf(not_defined, "#ifndef %s\n", optarg);
+                Sprintf(end_defined, "#endif %s\n", optarg);
+
                 break;
             case 'e':
                 diff_type = ED_DIFF;
@@ -405,15 +418,13 @@ void get_some_switches()
                 diff_type = NORMAL_DIFF;
                 break;
             case 'o':
-                outname = savestr(Argv[1]);
-                Argc--,Argv++;
+                outname = savestr(optarg);
                 break;
             case 'p':
-                usepath = TRUE; /* do not strip path names */
+                usepath = TRUE;
                 break;
             case 'r':
-                Strcpy(rejname,Argv[1]);
-                Argc--,Argv++;
+                Strcpy(rejname,optarg);
                 break;
             case 'R':
                 reverse = TRUE;
@@ -421,16 +432,30 @@ void get_some_switches()
             case 's':
                 verbose = FALSE;
                 break;
-#ifdef DEBUGGING
-            case 'x':
-                debug = atoi(s+1);
-#endif
+            #ifdef DEBUGGING
+                case 'x':
+                    debug = atoi(optarg);
+                    break;
+            #endif
             default:
-                fatal("Unrecognized switch: %s\n",Argv[0]);
-            }
+                if (file_arg_index == MAXFILEC){
+                    fatal("Too many file arguments.\n");
+                }
+                filearg[file_arg_index++] = savestr(Argv[optind-1]);
+                // fatal("Unrecognized switch: %c\n", c);
         }
     }
+    // Process remaining file arguments, if any
+    while (optind < Argc){
+        if (file_arg_index == MAXFILEC){
+            fatal("Too many file arguments.\n");
+        }
+        filearg[file_arg_index++] = savestr(Argv[optind++]);
+    }
+
+    filec = file_arg_index;
 }
+
 
 LINENUM
 locate_hunk()
