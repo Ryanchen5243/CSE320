@@ -165,14 +165,15 @@ void sf_free(void *pp) {
 
     // pointer to start of block
     sf_block* ptr = pp - sizeof(sf_header);
+    debug("%zu",GET_SIZE(ptr));
     if((pp == NULL) ||
         (((size_t)(pp) & 0x7) != 0) || // ptr not 8 byte aligned
         (GET_SIZE(ptr) < 32) || // block size less than 32
         ((GET_SIZE(ptr) &0x7) != 0) || // block size not mult of 8
         ((void*)ptr < sf_mem_start() || ((void*)ptr+GET_SIZE(ptr) > sf_mem_end())) ||// invalid header start or footer end
         (!GET_ALLOC(ptr)) || // allocated bit is 0
-        (GET_IN_QUICK_LIST(ptr)) // quick list bit is 1
-        // to add here ---------> prevalloc is 0 but alloc in prev is not 0
+        (GET_IN_QUICK_LIST(ptr)) || // quick list bit is 1
+        (!GET_PREV_ALLOC(ptr) && GET_ALLOC((void*)ptr-sizeof(sf_footer)))//prevalloc is 0 but alloc in prev is not 0
     ) {
         abort();
     }
@@ -229,6 +230,74 @@ void sf_free(void *pp) {
 
 void *sf_realloc(void *pp, size_t rsize) {
     // TO BE IMPLEMENTED
+    // validate pointer
+
+    // pointer to start of block
+    sf_block* ptr = pp - sizeof(sf_header);
+    if((pp == NULL) ||
+        (((size_t)(pp) & 0x7) != 0) || // ptr not 8 byte aligned
+        (GET_SIZE(ptr) < 32) || // block size less than 32
+        ((GET_SIZE(ptr) &0x7) != 0) || // block size not mult of 8
+        ((void*)ptr < sf_mem_start() || ((void*)ptr+GET_SIZE(ptr) > sf_mem_end())) ||// invalid header start or footer end
+        (!GET_ALLOC(ptr)) || // allocated bit is 0
+        (GET_IN_QUICK_LIST(ptr)) || // quick list bit is 1
+        (!GET_PREV_ALLOC(ptr) && GET_ALLOC((void*)ptr-sizeof(sf_footer)))//prevalloc is 0 but alloc in prev is not 0
+    ) {
+        sf_errno = EINVAL;
+        return NULL;
+    }
+    if(rsize == 0){
+        sf_free(pp);
+        return NULL;
+    }
+    size_t requestedBlockSize = rsize + sizeof(sf_header);
+    if(requestedBlockSize < MIN_BLOCK_SIZE){
+        requestedBlockSize = MIN_BLOCK_SIZE;
+    } else {
+        requestedBlockSize = ((requestedBlockSize + (ROW_SIZE-1)) / ROW_SIZE) * ROW_SIZE;
+    }
+
+    if(GET_SIZE(ptr) < requestedBlockSize) {
+        sf_block* newBlkPtr = sf_malloc(rsize);// obtain larger block
+        if(newBlkPtr == NULL) {
+            // no memory available
+            sf_errno = ENOMEM;
+            return NULL;
+        }
+        size_t payloadSize = GET_SIZE(ptr)-sizeof(sf_header);
+        memcpy(newBlkPtr,(void*)ptr+sizeof(sf_header),payloadSize);
+        sf_free((void*)ptr+sizeof(sf_header));
+        return newBlkPtr;
+    } else {
+        // determine if split or not
+        int toSplit = (GET_SIZE(ptr) - requestedBlockSize) >= 32;
+        if(toSplit){
+            size_t block1Size = requestedBlockSize;
+            size_t block2Size = GET_SIZE(ptr) - requestedBlockSize;
+            // update fields for first block
+            if(GET_PREV_ALLOC(ptr)){
+                ptr->header = PACK(block1Size,0,PREV_BLOCK_ALLOCATED,THIS_BLOCK_ALLOCATED);
+            } else {
+                ptr->header = PACK(block1Size,0,0,THIS_BLOCK_ALLOCATED);
+            }
+            // update fields for second block and insert into free list
+            sf_block* block2ptr = (void*) ptr + block1Size;
+            block2ptr->header = PACK(block2Size,0,PREV_BLOCK_ALLOCATED,0);
+            *((sf_footer*)((void*)block2ptr+block2Size-sizeof(sf_footer)))=block2ptr->header;
+            // update prevalloc for proceedin block
+            sf_block* nextAdjBlk = (sf_block*)((void*)ptr+(block1Size+block2Size));
+            nextAdjBlk->header |= PREV_BLOCK_ALLOCATED;
+            if(!GET_ALLOC(nextAdjBlk)){ // update footer too
+                *((sf_footer*)((void*)nextAdjBlk + GET_SIZE(nextAdjBlk)-sizeof(sf_footer))) = nextAdjBlk->header;
+            }
+            // coalesce free block
+            coalesce(block2ptr);
+
+        }
+        return pp;
+
+    }
+
     return NULL;
 }
 
@@ -356,7 +425,8 @@ static void insertIntoMainFreeList(sf_block* block){
     sf_free_list_heads[freeListIndex].body.links.next = block;
 }
 
-/* Takes as input  */
+/* Takes as input block to free, checks neighboring blocks for alloc, updates fields,
+adjusts and adds coalesced block to main free list*/
 static void* coalesce(void*bp) {
     size_t prevAlloc = GET_PREV_ALLOC(bp);
     size_t nextAlloc = GET_ALLOC(bp + GET_SIZE(bp));
