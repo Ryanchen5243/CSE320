@@ -165,7 +165,7 @@ void sf_free(void *pp) {
 
     // pointer to start of block
     sf_block* ptr = pp - sizeof(sf_header);
-    debug("%zu",GET_SIZE(ptr));
+
     if((pp == NULL) ||
         (((size_t)(pp) & 0x7) != 0) || // ptr not 8 byte aligned
         (GET_SIZE(ptr) < 32) || // block size less than 32
@@ -303,7 +303,53 @@ void *sf_realloc(void *pp, size_t rsize) {
 
 void *sf_memalign(size_t size, size_t align) {
     // TO BE IMPLEMENTED
-    return NULL;
+    int powOfTwo = (align & (align-1)) == 0;
+    if(align < MIN_BLOCK_SIZE || !powOfTwo){
+        sf_errno = EINVAL;
+        return NULL;
+    }
+    size_t reqPayloadSize = size + align + MIN_BLOCK_SIZE;
+    sf_block* blockPtr = sf_malloc(reqPayloadSize); // ptr to payload
+    // printf("Block ptr returned: %p\n",blockPtr);
+    // printf("block returned by malloc is %p\n",(void*)blockPtr-sizeof(sf_header));
+    // sf_show_heap();
+    // printf("Mem start is %p\n",sf_mem_start());
+    // printf("Mem end is %p\n",sf_mem_end());
+    void* blockStart = (void*)blockPtr - sizeof(sf_header);
+    int aligned = ((size_t)blockPtr % align) ==0;
+    if(aligned){ // no work needs to be done
+        return blockStart;
+    } else {
+        size_t offset = align - ((size_t)blockPtr% align); // offset to align by
+
+        // printf("%zu\n",offset);
+        // printf("Total block size is %zu\n",GET_SIZE(blockStart));
+        // debug("testing ptr %p",(void*)blockPtr + offset);
+
+        sf_block* block1 = blockStart; // ptr to start of b1, to free
+        sf_block* block2 = (void*)blockStart + offset; // ptr to start of b2, alloc and return
+        // debug("Block start %p\n",blockStart);
+        // debug("Block end %p\n",(void*)blockStart+GET_SIZE(blockStart));
+        // debug("Block 2: %p\n",block2);
+
+        size_t size1 = offset;
+        size_t size2 = GET_SIZE(blockStart) - offset;
+        int b1pa = GET_PREV_ALLOC(block1);
+        // update fields for b1
+        if(b1pa){
+            block1->header = PACK(size1,0,PREV_BLOCK_ALLOCATED,0);
+        } else{
+            block1->header = PACK(size1,0,0,0);
+        }
+        *((sf_footer*)((void*)block1 + size1 -sizeof(sf_footer))) = block1->header;
+
+        // update header for block2
+        block2->header = PACK(size2,0,0,THIS_BLOCK_ALLOCATED);
+
+        // coalesce free block
+        coalesce(block1);
+        return block2->body.payload;
+    }
 }
 
 // helper functions

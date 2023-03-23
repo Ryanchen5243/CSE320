@@ -244,3 +244,41 @@ Test(sfmm_basecode_suite, realloc_smaller_block_free_block, .timeout = TEST_TIME
 
 //Test(sfmm_student_suite, student_test_1, .timeout = TEST_TIMEOUT) {
 //}
+
+Test(sfmm_student_sutie, student_test_memalign_pow2, .timeout = TEST_TIMEOUT){
+	void* x = sf_memalign(50, 6); // not pow of 2
+	cr_assert_eq(sf_errno, EINVAL, "sf_errno != EINVAL, sf_errno: %d, EINVAL: %d", sf_errno, EINVAL);
+	cr_assert_null(x, "X != NULL, x = %p", x);
+}
+
+Test(sfmm_student_suite, student_test_memalign_too_small_alignment, .timeout = TEST_TIMEOUT) {
+	void* x = sf_memalign(50,30); // align < min block size
+	cr_assert_eq(sf_errno,EINVAL,"sf_errno != EINVAL, sf_errno: %d,EINVAL: %d",sf_errno,EINVAL);
+	cr_assert(x==NULL,"X != NULL, x = %p",x);
+}
+
+Test(sfmm_student_sutie, student_test_memalign_return_pointer, .timeout = TEST_TIMEOUT){
+	void* x = sf_memalign(55,256);
+	cr_assert_not_null(x, "X is NULL. X = %p",x);
+	cr_assert_eq((size_t)x%256,0,"X is not aligned. x%256=%d",(size_t)x%256);
+}
+Test(sfmm_student_sutie, student_test_malloc_and_free, .timeout = TEST_TIMEOUT){
+	void* ptr = sf_malloc(40); // to be inserted into quick list
+	assert_free_list_size(7,1);
+	sf_free(ptr);
+	assert_quick_list_block_count(48,1);// assert quicklist ind 2 has one block
+	sf_malloc(40);
+	assert_free_list_size(7,1);
+	assert_quick_list_block_count(0,0);
+
+}
+
+Test(sfmm_student_sutie, student_test_quick_list_order, .timeout = TEST_TIMEOUT){
+	// assert no two adjacent free blocks
+	void* x = sf_malloc(40);
+	void* y = sf_malloc(40);
+	sf_free(x);
+	sf_free(y);
+	void*z = sf_malloc(40);
+	cr_assert_eq(z,y,"Quick List Not LIFO"); // assert z not y
+}
