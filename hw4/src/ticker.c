@@ -29,8 +29,7 @@ volatile sig_atomic_t dataAvailable = 0;
 extern int numBytesReadGlobal;
 
 void sigint_handler(int s){
-    // char* msg = "SIGINT Signal Received\n";
-    // write(STDOUT_FILENO,msg,24);
+
     exit(0);
 }
 
@@ -41,20 +40,13 @@ void sigio_handler(int s, siginfo_t* info,void* context){
     int oldErrno = errno;
     int fd = info->si_fd;
     // // criticla section - block out signal s
-    // sigset_t mask;
-    // sigset_t oldMask;
-    // sigemptyset(&mask);
-    // sigaddset(&mask,s);
-    // sigprocmask(SIG_BLOCK,&mask,&oldMask);
+
     if (fd == STDIN_FILENO) { // user input
         user_input_detected = 1;
         // printf("User input detected!\n");
     } else{
         printf("handling other SIGIO");
     }
-    // unblock signals
-    // sigprocmask(SIG_SETMASK,&oldMask,NULL);
-
     errno = oldErrno; // restore errno
 }
 
@@ -128,6 +120,7 @@ int ticker(void) {
         if (user_input_detected){
             userCmd = bufferUserInput();
             watcher_types[CLI_WATCHER_TYPE].recv(cliWatcher,userCmd);
+
             if(quitDetected==1){
                 debug("quit detected in mainnnnnnnnnnnnn");
                 free(userCmd);
@@ -135,7 +128,7 @@ int ticker(void) {
             }
             // write(STDOUT_FILENO,"ticker> ",8);
             // debug("heheeeeeeeee");
-            watcher_types[CLI_WATCHER_TYPE].send(cliWatcher,"ticker> ");
+
 
             sigset_t mask;
             sigset_t oldMask;

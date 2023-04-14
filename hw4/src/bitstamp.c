@@ -17,12 +17,11 @@ typedef struct watcher {
 } WATCHER;
 
 WATCHER *bitstamp_watcher_start(WATCHER_TYPE *type, char *args[]) {
-    // args[0] = uwsc
-    // args[1] = ...bitstamp.net
     // start bitstamp.net live_trades_btcusd
 
     WATCHER* b = malloc(sizeof(WATCHER));
     b->wtype = BITSTAMP_WATCHER_TYPE;
+    debug("testing testing cmd ptr %s",*args);
 
     // set up 2 way pipe
     int pipe1[2],pipe2[2];
@@ -32,9 +31,14 @@ WATCHER *bitstamp_watcher_start(WATCHER_TYPE *type, char *args[]) {
     if(pipe(pipe2) == -1){
         perror("pipe2 error");
     }
-
+    debug("args 0 %s",args[0]);
+    debug("args 1 %s",args[1]);
+    debug("args 2 %s",args[2]);
+    // debug("channel %s",type->channel);
     pid_t pid = fork();
+
     if((pid == 0)){ // child
+        debug("fork in child");
         // close ends
         close(pipe1[1]);
         close(pipe2[0]);
@@ -47,16 +51,15 @@ WATCHER *bitstamp_watcher_start(WATCHER_TYPE *type, char *args[]) {
         if(dup2(pipe2[1], STDOUT_FILENO) == -1){
             perror("dup2 stdout error");
         }
-
+        // start bitstamp.net live_trades_btcusd
         // close original pipe ends
         close(pipe1[0]);
         close(pipe2[1]);
-
-        if(execvp("uwsc",args) < 0){
-            debug("alskdfj;laskdfja;slfkjexecvp failed");
-        } else{
-            debug("launched uwsc");
+        debug("in child lol");
+        if(execvp(args[0],args) == -1) {
+            debug("execvp error ");
         }
+
     } else { // parent
         close(pipe1[0]);
         close(pipe2[1]);
@@ -66,6 +69,9 @@ WATCHER *bitstamp_watcher_start(WATCHER_TYPE *type, char *args[]) {
         b->fdin = pipe2[0];
         b->fdout = pipe1[1];
         b->channel = *args;
+        debug("tesing json");
+        // send to child
+
     }
 
     return b;

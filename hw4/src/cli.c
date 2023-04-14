@@ -58,9 +58,8 @@ WATCHER *cli_watcher_start(WATCHER_TYPE *type, char *args[]) {
 
 int cli_watcher_stop(WATCHER *wp) {
     // TO BE IMPLEMENTED
-    kill(wp->pid,SIGKILL);
-    freeAndRemoveFromWatcherTable(wp);
-    return 0;
+    perror("cannot stop cli instance");
+    return 1;
 }
 
 int cli_watcher_send(WATCHER *wp, void *arg) {
@@ -75,8 +74,6 @@ int cli_watcher_send(WATCHER *wp, void *arg) {
 
 // handling user command
 int cli_watcher_recv(WATCHER *wp, char *txt) {
-    // debug("text is ;;;;;; %s",txt);
-    // split txt into parts pass into handle in loop
     char* cur = txt;
     // debug("strlennn %zu",strlen(txt));
     int len = strlen(txt);
@@ -85,6 +82,7 @@ int cli_watcher_recv(WATCHER *wp, char *txt) {
             txt[i] = '\0';
             debug("curr %s",cur);
             handleUserCommand(cur);
+            cli_watcher_send(wp,"ticker> ");
             cur = txt+1+i;
         }
     }
@@ -161,7 +159,7 @@ char* bufferUserInput() {
 }
 
 static int handleUserCommand(char* cmd){
-    // debug("handling user input");
+    debug("handling user input");
     int numwords = 0;
     int numSpace = 0;
     debug("testing command????????? %s\n",cmd);
@@ -190,23 +188,23 @@ static int handleUserCommand(char* cmd){
         debug("Invokkginn Quit Function");
         quitDetected = 1;
         cleanUpWatchers();
-    } else if(strncmp(cmd,"watchers",strlen("watchers"))== 0){
+    } else if(strncmp(cmdPtrs[0],"watchers",strlen("watchers"))== 0){
         debug("Watchers Function");
         displayWatchers();
-    } else if(strncmp(cmd,"start",strlen("start"))== 0){
+    } else if(strncmp(cmdPtrs[0],"start",strlen("start"))== 0){
         debug("Start Function");
+        char* bswarg[] = {cmdPtrs[2]};
         WATCHER* bsw = watcher_types[BITSTAMP_WATCHER_TYPE].start(&watcher_types[BITSTAMP_WATCHER_TYPE],
-        watcher_types[BITSTAMP_WATCHER_TYPE].argv);
-
-        if(bsw);
-
-    } else if(strncmp(cmd,"stop",strlen("stop"))== 0){
+        bswarg);
+        insertIntoWatcherTable(bsw);
+        // start bitstamp.net live_trades_btcusd
+    } else if(strncmp(cmdPtrs[0],"stop",strlen("stop"))== 0){
         debug("Stop Function");
-    } else if(strncmp(cmd,"trace",strlen("trace"))== 0){
+    } else if(strncmp(cmdPtrs[0],"trace",strlen("trace"))== 0){
 
-    } else if(strncmp(cmd,"untrace",strlen("untrace"))== 0){
+    } else if(strncmp(cmdPtrs[0],"untrace",strlen("untrace"))== 0){
 
-    } else if(strncmp(cmd,"show",strlen("show"))== 0){
+    } else if(strncmp(cmdPtrs[0],"show",strlen("show"))== 0){
 
     } else{
         // invalid cmd
@@ -230,15 +228,22 @@ static void insertIntoWatcherTable(WATCHER* w){
 static void displayWatchers(){
     for(int i = 0; i < watchersCount;i++){
         if(watcherTable[i]->wtype == CLI_WATCHER_TYPE){
-            // char* cliDis =
-            // write(STDOUT_FILENO,"%d\t%s(%d,%d,%d)\n",watcherTable[i]->tableIndex,
-            //     watcher_types[CLI_WATCHER_TYPE].name,watcherTable[i]->pid,watcherTable[i]->fdin,watcherTable[i]->fdout);
-            char cliDis[100];
-            sprintf(cliDis, "%d\t%s(%d,%d,%d)\n", watcherTable[i]->tableIndex, watcher_types[CLI_WATCHER_TYPE].name, watcherTable[i]->pid, watcherTable[i]->fdin, watcherTable[i]->fdout);
-            debug("clidis %s",cliDis);
-            write(STDOUT_FILENO, cliDis, strlen(cliDis));
+            printf("%d\t%s(%d,%d,%d)\n",
+                watcherTable[i]->tableIndex,
+                watcher_types[CLI_WATCHER_TYPE].name,
+                watcherTable[i]->pid,
+                watcherTable[i]->fdin,
+                watcherTable[i]->fdout);
         } else {
-            // printf("%s\n", "bitstamp");
+            printf("%d\t%s(%d,%d,%d) %s %s [%s]\n",
+                watcherTable[i]->tableIndex,
+                watcher_types[BITSTAMP_WATCHER_TYPE].name,
+                watcherTable[i]->pid,
+                watcherTable[i]->fdin,
+                watcherTable[i]->fdout,
+                watcher_types[BITSTAMP_WATCHER_TYPE].argv[0],
+                watcher_types[BITSTAMP_WATCHER_TYPE].argv[1],
+                watcherTable[i]->channel);
         }
     }
     fflush(stdout);
