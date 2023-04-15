@@ -30,13 +30,14 @@ static void displayWatchers();
 static void freeAndRemoveFromWatcherTable(WATCHER* w);
 static void cleanUpWatchers();
 
-
 typedef struct watcher {
     int tableIndex;
     int wtype;
     int pid;
     int fdin;
     int fdout;
+    int trace;
+    int terminated;
     char* channel;
 } WATCHER;
 
@@ -47,6 +48,8 @@ WATCHER *cli_watcher_start(WATCHER_TYPE *type, char *args[]) {
     newCLI->fdin = 0;
     newCLI->fdout = 1;
     newCLI->channel = NULL;
+    newCLI->trace = 0;
+    newCLI->terminated = 0;
     // initialize watcher table
     for(int i =0; i< 100;i++){
         watcherTable[i] = NULL;
@@ -57,18 +60,13 @@ WATCHER *cli_watcher_start(WATCHER_TYPE *type, char *args[]) {
 }
 
 int cli_watcher_stop(WATCHER *wp) {
-    // TO BE IMPLEMENTED
-    perror("cannot stop cli instance");
-    return 1;
+    wp->terminated = 1;
+    freeAndRemoveFromWatcherTable(wp);
+    return 0;
 }
 
 int cli_watcher_send(WATCHER *wp, void *arg) {
-    if(strncmp((char*)arg, "ticker> ", strlen("ticker> ")) == 0) { // prompt user input
-        write(STDOUT_FILENO, arg, strlen((char*)arg));
-        fflush(stdout);
-        return 0;
-    }
-    // else check fd for stdout to write data to
+    write(wp->fdout,arg,strlen(arg));
     return 0;
 }
 
@@ -89,10 +87,8 @@ int cli_watcher_recv(WATCHER *wp, char *txt) {
 
     if(quitDetected == 1 || numBytesReadGlobal==0){
         cleanUpWatchers();
-        return 0;
     }
 
-    // else ck fd for stdin to read from
     return 0;
 }
 
@@ -183,7 +179,6 @@ static int handleUserCommand(char* cmd){
             ind++;
         }
     }
-
     if(strncmp(cmdPtrs[0], "quit", strlen("quit")) == 0){
         debug("Invokkginn Quit Function");
         quitDetected = 1;
@@ -200,6 +195,15 @@ static int handleUserCommand(char* cmd){
         // start bitstamp.net live_trades_btcusd
     } else if(strncmp(cmdPtrs[0],"stop",strlen("stop"))== 0){
         debug("Stop Function");
+        if(numwords != 2) goto INVALIDCMD;
+        int wId = atoi(cmdPtrs[1]);
+        // debug("watcher id to stop %d",wId);
+        if(watcherTable[wId]->wtype == CLI_WATCHER_TYPE) {
+            goto INVALIDCMD;
+        }
+        // set terminate + kill
+        watcher_types[BITSTAMP_WATCHER_TYPE].stop(watcherTable[wId]);
+        freeAndRemoveFromWatcherTable(watcherTable[wId]);
     } else if(strncmp(cmdPtrs[0],"trace",strlen("trace"))== 0){
 
     } else if(strncmp(cmdPtrs[0],"untrace",strlen("untrace"))== 0){
@@ -207,7 +211,7 @@ static int handleUserCommand(char* cmd){
     } else if(strncmp(cmdPtrs[0],"show",strlen("show"))== 0){
 
     } else{
-        // invalid cmd
+        INVALIDCMD:
         if(!firstHandle){
             printf("???\n");
             fflush(stdout);

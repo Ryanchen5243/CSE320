@@ -16,6 +16,8 @@ typedef struct watcher {
     int pid;
     int fdin;
     int fdout;
+    int trace;
+    int terminated;
     char* channel;
 } WATCHER;
 
@@ -51,8 +53,8 @@ void sigio_handler(int s, siginfo_t* info,void* context){
 }
 
 void sigchild_handler(int s){
-    char* msg = "SIG CHILD Signal Recieved";
-    write(STDOUT_FILENO,msg,sizeof(msg));
+    // char* msg = "SIG CHILD Signal Recieved";
+    // write(STDOUT_FILENO,msg,sizeof(msg));
     // waitpid() -> get watcher pid, close fd, free slots in watcher table and other memory
 
 }

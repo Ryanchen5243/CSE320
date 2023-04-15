@@ -6,13 +6,16 @@
 #include "debug.h"
 
 #include <unistd.h>
-
+#include <string.h>
+#include <signal.h>
 typedef struct watcher {
     int tableIndex;
     int wtype;
     int pid;
     int fdin;
     int fdout;
+    int trace;
+    int terminated;
     char* channel;
 } WATCHER;
 
@@ -31,10 +34,6 @@ WATCHER *bitstamp_watcher_start(WATCHER_TYPE *type, char *args[]) {
     if(pipe(pipe2) == -1){
         perror("pipe2 error");
     }
-    debug("args 0 %s",args[0]);
-    debug("args 1 %s",args[1]);
-    debug("args 2 %s",args[2]);
-    // debug("channel %s",type->channel);
     pid_t pid = fork();
 
     if((pid == 0)){ // child
@@ -56,40 +55,41 @@ WATCHER *bitstamp_watcher_start(WATCHER_TYPE *type, char *args[]) {
         close(pipe1[0]);
         close(pipe2[1]);
         debug("in child lol");
-        if(execvp(args[0],args) == -1) {
+        if(execvp("uwsc",watcher_types[BITSTAMP_WATCHER_TYPE].argv) == -1) {
             debug("execvp error ");
         }
-
     } else { // parent
         close(pipe1[0]);
         close(pipe2[1]);
         b->pid = pid;
-
         // set up fd for watcher
         b->fdin = pipe2[0];
         b->fdout = pipe1[1];
         b->channel = *args;
-        debug("tesing json");
-        // send to child
-
+        b->trace = 0;
+        b->terminated = 0;
     }
-
     return b;
 }
 
 int bitstamp_watcher_stop(WATCHER *wp) {
     // TO BE IMPLEMENTED
-    free(wp);
+    wp->terminated = 1;
+    if (kill(wp->pid, SIGTERM) == -1) {
+        perror("SIGTERM send fail");
+        return -1;
+    }
     return 0;
 }
 
 int bitstamp_watcher_send(WATCHER *wp, void *arg) {
-    // TO BE IMPLEMENTED
+    // json to send to server
+
     return 0;
 }
 
 int bitstamp_watcher_recv(WATCHER *wp, char *txt) {
-    // TO BE IMPLEMENTED
+    // data from child
     return 0;
 }
 
